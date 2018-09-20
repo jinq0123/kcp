@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jinq0123/kcp/internal/seg"
 )
 
 func iclock() int32 {
@@ -306,10 +308,10 @@ func TestSetMTU(t *testing.T) {
 
 func BenchmarkFlush(b *testing.B) {
 	kcp := NewKCP(1, nil)
-	kcp.snd_buf = make([]segment, 32)
+	kcp.snd_buf = make([]seg.Segment, 32)
 	for k := range kcp.snd_buf {
-		kcp.snd_buf[k].xmit = 1
-		kcp.snd_buf[k].resendts = currentMs() + 10000
+		kcp.snd_buf[k].Xmit = 1
+		kcp.snd_buf[k].ResendTs = currentMs() + 10000
 	}
 	b.ResetTimer()
 	b.ReportAllocs()
