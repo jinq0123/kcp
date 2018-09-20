@@ -177,13 +177,13 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 
 // newSegment creates a KCP segment
 func (kcp *KCP) newSegment(size int) (seg segment) {
-	seg.data = internal.XmitBuf.Get().([]byte)[:size]
+	seg.data = internal.PacketPool.Get().([]byte)[:size]
 	return
 }
 
 // delSegment recycles a KCP segment
 func (kcp *KCP) delSegment(seg segment) {
-	internal.XmitBuf.Put(seg.data)
+	internal.PacketPool.Put(seg.data)
 }
 
 // PeekSize checks the size of next message in the recv queue
