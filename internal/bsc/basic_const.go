@@ -1,6 +1,7 @@
 // Package bsc defines basic const values for KCP.
 package bsc
 
+// KCP BASIC
 const (
 	RTO_NDL     = 30  // no delay min rto
 	RTO_MIN     = 100 // normal min rto

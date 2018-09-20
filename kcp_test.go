@@ -5,6 +5,7 @@ import (
 	"container/list"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math/rand"
 	"sync"
 	"testing"
@@ -120,6 +121,24 @@ func (p *LatencySimulator) recv(peer int, data []byte, maxsize int) int32 {
 	return int32(maxsize)
 }
 
+type _VNetWriter struct {
+	peer int
+	vnet *LatencySimulator
+}
+
+func (w *_VNetWriter) Write(p []byte) (n int, err error) {
+	n = len(p)
+	w.vnet.send(w.peer, p, n)
+	return n, nil
+}
+
+func NewVNetWriter(peer int, vnet *LatencySimulator) io.Writer {
+	return &_VNetWriter{
+		peer: peer,
+		vnet: vnet,
+	}
+}
+
 //=====================================================================
 //=====================================================================
 
@@ -133,17 +152,9 @@ func test(mode int) {
 	vnet.Init(10, 60, 125, 1000)
 
 	// 创建两个端点的 kcp对象，第一个参数 conv是会话编号，同一个会话需要相同
-	// 最后一个是 user参数，用来传递标识
-	output1 := func(buf []byte, size int) {
-		if vnet.send(0, buf, size) != 1 {
-		}
-	}
-	output2 := func(buf []byte, size int) {
-		if vnet.send(1, buf, size) != 1 {
-		}
-	}
-	kcp1 := NewKCP(0x11223344, output1)
-	kcp2 := NewKCP(0x11223344, output2)
+	// 后一个是输出对象
+	kcp1 := NewKCP(0x11223344, NewVNetWriter(0, vnet))
+	kcp2 := NewKCP(0x11223344, NewVNetWriter(1, vnet))
 
 	current := uint32(iclock())
 	slap := current + 20
@@ -294,7 +305,7 @@ func TestSetMTU(t *testing.T) {
 }
 
 func BenchmarkFlush(b *testing.B) {
-	kcp := NewKCP(1, func(buf []byte, size int) {})
+	kcp := NewKCP(1, nil)
 	kcp.snd_buf = make([]segment, 32)
 	for k := range kcp.snd_buf {
 		kcp.snd_buf[k].xmit = 1

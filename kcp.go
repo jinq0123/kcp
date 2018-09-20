@@ -3,15 +3,14 @@ package kcp
 
 import (
 	"encoding/binary"
+	"io"
 	"sync/atomic"
 
 	assert "github.com/arl/assertgo"
+	"github.com/jinq0123/kcp/internal"
 	"github.com/jinq0123/kcp/internal/bsc"
 	"github.com/jinq0123/kcp/internal/pktpl"
 )
-
-// output_callback is a prototype which ought capture conn and call conn.Write
-type output_callback func(buf []byte, size int)
 
 /* encode 8 bits unsigned int */
 func ikcp_encode8u(p []byte, c byte) []byte {
@@ -125,7 +124,8 @@ type KCP struct {
 	acklist []ackItem
 
 	buffer []byte
-	output output_callback
+
+	writer io.Writer // KCP output, not nil
 }
 
 type ackItem struct {
@@ -133,9 +133,13 @@ type ackItem struct {
 	ts uint32
 }
 
-// NewKCP create a new kcp control object, 'conv' must equal in two endpoint
-// from the same connection.
-func NewKCP(conv uint32, output output_callback) *KCP {
+// NewKCP create a new kcp control object.
+// 'conv' must equal in two endpoint from the same connection.
+func NewKCP(conv uint32, w io.Writer) *KCP {
+	if w == nil {
+		w = internal.NewDummyWriter()
+	}
+
 	kcp := new(KCP)
 	kcp.conv = conv
 	kcp.snd_wnd = bsc.WND_SND
@@ -150,7 +154,7 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 	kcp.ts_flush = bsc.INTERVAL
 	kcp.ssthresh = bsc.THRESH_INIT
 	kcp.dead_link = bsc.DEADLINK
-	kcp.output = output
+	kcp.writer = w
 	return kcp
 }
 
@@ -616,7 +620,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 	for i, ack := range kcp.acklist {
 		size := len(buffer) - len(ptr)
 		if size+bsc.OVERHEAD > int(kcp.mtu) {
-			kcp.output(buffer, size)
+			/*n, err := */ kcp.writer.Write(buffer[:size]) // XXX check err
 			ptr = buffer
 		}
 		// filter jitters caused by bufferbloat
@@ -630,7 +634,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 	if ackOnly { // flash remain ack segments
 		size := len(buffer) - len(ptr)
 		if size > 0 {
-			kcp.output(buffer, size)
+			/* n, err := */ kcp.writer.Write(buffer[:size]) // XXX check err
 		}
 		return
 	}
@@ -664,7 +668,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 		seg.cmd = bsc.CMD_WASK
 		size := len(buffer) - len(ptr)
 		if size+bsc.OVERHEAD > int(kcp.mtu) {
-			kcp.output(buffer, size)
+			/* n, err := */ kcp.writer.Write(buffer[:size]) // XXX check err
 			ptr = buffer
 		}
 		ptr = seg.encode(ptr)
@@ -675,7 +679,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 		seg.cmd = bsc.CMD_WINS
 		size := len(buffer) - len(ptr)
 		if size+bsc.OVERHEAD > int(kcp.mtu) {
-			kcp.output(buffer, size)
+			/* n, err := */ kcp.writer.Write(buffer[:size]) // XXX check err
 			ptr = buffer
 		}
 		ptr = seg.encode(ptr)
@@ -760,8 +764,8 @@ func (kcp *KCP) flush(ackOnly bool) {
 			need := bsc.OVERHEAD + len(segment.data)
 
 			if size+need > int(kcp.mtu) {
-				kcp.output(buffer, size)
-				current = currentMs() // time update for a blocking call
+				/* n, err := */ kcp.writer.Write(buffer[:size]) // XXX check err
+				current = currentMs()                           // time update for a blocking call
 				ptr = buffer
 			}
 
@@ -778,7 +782,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 	// flash remain segments
 	size := len(buffer) - len(ptr)
 	if size > 0 {
-		kcp.output(buffer, size)
+		/* n, err := */ kcp.writer.Write(buffer[:size]) // XXX check err
 	}
 
 	// counter updates
