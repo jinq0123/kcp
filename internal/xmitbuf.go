@@ -1,4 +1,4 @@
-package kcp
+package internal
 
 import "sync"
 
@@ -10,11 +10,11 @@ const (
 var (
 	// a system-wide packet buffer shared among sending, receiving and FEC
 	// to mitigate high-frequency memory allocation for packets
-	xmitBuf sync.Pool
+	XmitBuf sync.Pool
 )
 
 func init() {
-	xmitBuf.New = func() interface{} {
+	XmitBuf.New = func() interface{} {
 		return make([]byte, mtuLimit)
 	}
 }

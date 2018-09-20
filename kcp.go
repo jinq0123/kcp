@@ -4,6 +4,7 @@ package kcp
 import (
 	"encoding/binary"
 	"sync/atomic"
+	"github.com/jinq0123/kcp/internal"
 )
 
 const (
@@ -176,13 +177,13 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 
 // newSegment creates a KCP segment
 func (kcp *KCP) newSegment(size int) (seg segment) {
-	seg.data = xmitBuf.Get().([]byte)[:size]
+	seg.data = internal.XmitBuf.Get().([]byte)[:size]
 	return
 }
 
 // delSegment recycles a KCP segment
 func (kcp *KCP) delSegment(seg segment) {
-	xmitBuf.Put(seg.data)
+	internal.XmitBuf.Put(seg.data)
 }
 
 // PeekSize checks the size of next message in the recv queue
