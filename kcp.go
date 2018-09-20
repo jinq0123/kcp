@@ -6,31 +6,8 @@ import (
 	"sync/atomic"
 
 	assert "github.com/arl/assertgo"
+	"github.com/jinq0123/kcp/internal/bsc"
 	"github.com/jinq0123/kcp/internal/pktpl"
-)
-
-const (
-	IKCP_RTO_NDL     = 30  // no delay min rto
-	IKCP_RTO_MIN     = 100 // normal min rto
-	IKCP_RTO_DEF     = 200
-	IKCP_RTO_MAX     = 60000
-	IKCP_CMD_PUSH    = 81 // cmd: push data
-	IKCP_CMD_ACK     = 82 // cmd: ack
-	IKCP_CMD_WASK    = 83 // cmd: window probe (ask)
-	IKCP_CMD_WINS    = 84 // cmd: window size (tell)
-	IKCP_ASK_SEND    = 1  // need to send IKCP_CMD_WASK
-	IKCP_ASK_TELL    = 2  // need to send IKCP_CMD_WINS
-	IKCP_WND_SND     = 32
-	IKCP_WND_RCV     = 32
-	IKCP_MTU_DEF     = 1400
-	IKCP_ACK_FAST    = 3
-	IKCP_INTERVAL    = 100
-	IKCP_OVERHEAD    = 24
-	IKCP_DEADLINK    = 20
-	IKCP_THRESH_INIT = 2
-	IKCP_THRESH_MIN  = 2
-	IKCP_PROBE_INIT  = 7000   // 7 secs to probe window size
-	IKCP_PROBE_LIMIT = 120000 // up to 120 secs to probe window
 )
 
 // output_callback is a prototype which ought capture conn and call conn.Write
@@ -161,18 +138,18 @@ type ackItem struct {
 func NewKCP(conv uint32, output output_callback) *KCP {
 	kcp := new(KCP)
 	kcp.conv = conv
-	kcp.snd_wnd = IKCP_WND_SND
-	kcp.rcv_wnd = IKCP_WND_RCV
-	kcp.rmt_wnd = IKCP_WND_RCV
-	kcp.mtu = IKCP_MTU_DEF
-	kcp.mss = kcp.mtu - IKCP_OVERHEAD
-	kcp.buffer = make([]byte, (kcp.mtu+IKCP_OVERHEAD)*3)
-	kcp.rx_rto = IKCP_RTO_DEF
-	kcp.rx_minrto = IKCP_RTO_MIN
-	kcp.interval = IKCP_INTERVAL
-	kcp.ts_flush = IKCP_INTERVAL
-	kcp.ssthresh = IKCP_THRESH_INIT
-	kcp.dead_link = IKCP_DEADLINK
+	kcp.snd_wnd = bsc.WND_SND
+	kcp.rcv_wnd = bsc.WND_RCV
+	kcp.rmt_wnd = bsc.WND_RCV
+	kcp.mtu = bsc.MTU_DEF
+	kcp.mss = kcp.mtu - bsc.OVERHEAD
+	kcp.buffer = make([]byte, (kcp.mtu+bsc.OVERHEAD)*3)
+	kcp.rx_rto = bsc.RTO_DEF
+	kcp.rx_minrto = bsc.RTO_MIN
+	kcp.interval = bsc.INTERVAL
+	kcp.ts_flush = bsc.INTERVAL
+	kcp.ssthresh = bsc.THRESH_INIT
+	kcp.dead_link = bsc.DEADLINK
 	kcp.output = output
 	return kcp
 }
@@ -269,9 +246,9 @@ func (kcp *KCP) Recv(buffer []byte) (n int) {
 
 	// fast recover
 	if len(kcp.rcv_queue) < int(kcp.rcv_wnd) && fast_recover {
-		// ready to send back IKCP_CMD_WINS in ikcp_flush
+		// ready to send back bsc.CMD_WINS in ikcp_flush
 		// tell remote my window size
-		kcp.probe |= IKCP_ASK_TELL
+		kcp.probe |= bsc.ASK_TELL
 	}
 	return
 }
@@ -365,7 +342,7 @@ func (kcp *KCP) update_ack(rtt int32) {
 		}
 	}
 	rto = uint32(kcp.rx_srtt) + _imax_(kcp.interval, uint32(kcp.rx_rttvar)<<2)
-	kcp.rx_rto = _ibound_(kcp.rx_minrto, rto, IKCP_RTO_MAX)
+	kcp.rx_rto = _ibound_(kcp.rx_minrto, rto, bsc.RTO_MAX)
 }
 
 func (kcp *KCP) shrink_buf() {
@@ -490,7 +467,7 @@ func (kcp *KCP) parse_data(newseg segment) {
 // regular indicates a regular packet has received(not from FEC)
 func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 	snd_una := kcp.snd_una
-	if len(data) < IKCP_OVERHEAD {
+	if len(data) < bsc.OVERHEAD {
 		return -1
 	}
 
@@ -504,7 +481,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 		var wnd uint16
 		var cmd, frg uint8
 
-		if len(data) < int(IKCP_OVERHEAD) {
+		if len(data) < int(bsc.OVERHEAD) {
 			break
 		}
 
@@ -524,8 +501,8 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 			return -2
 		}
 
-		if cmd != IKCP_CMD_PUSH && cmd != IKCP_CMD_ACK &&
-			cmd != IKCP_CMD_WASK && cmd != IKCP_CMD_WINS {
+		if cmd != bsc.CMD_PUSH && cmd != bsc.CMD_ACK &&
+			cmd != bsc.CMD_WASK && cmd != bsc.CMD_WINS {
 			return -3
 		}
 
@@ -536,7 +513,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 		kcp.parse_una(una)
 		kcp.shrink_buf()
 
-		if cmd == IKCP_CMD_ACK {
+		if cmd == bsc.CMD_ACK {
 			kcp.parse_ack(sn)
 			kcp.shrink_buf()
 			if flag == 0 {
@@ -547,7 +524,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				maxack = sn
 				lastackts = ts
 			}
-		} else if cmd == IKCP_CMD_PUSH {
+		} else if cmd == bsc.CMD_PUSH {
 			if _itimediff(sn, kcp.rcv_nxt+kcp.rcv_wnd) < 0 {
 				kcp.ack_push(sn, ts)
 				if _itimediff(sn, kcp.rcv_nxt) >= 0 {
@@ -567,11 +544,11 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 			} else {
 				atomic.AddUint64(&DefaultSnmp.RepeatSegs, 1)
 			}
-		} else if cmd == IKCP_CMD_WASK {
-			// ready to send back IKCP_CMD_WINS in Ikcp_flush
+		} else if cmd == bsc.CMD_WASK {
+			// ready to send back bsc.CMD_WINS in Ikcp_flush
 			// tell remote my window size
-			kcp.probe |= IKCP_ASK_TELL
-		} else if cmd == IKCP_CMD_WINS {
+			kcp.probe |= bsc.ASK_TELL
+		} else if cmd == bsc.CMD_WINS {
 			// do nothing
 		} else {
 			return -3
@@ -629,7 +606,7 @@ func (kcp *KCP) wnd_unused() uint16 {
 func (kcp *KCP) flush(ackOnly bool) {
 	var seg segment
 	seg.conv = kcp.conv
-	seg.cmd = IKCP_CMD_ACK
+	seg.cmd = bsc.CMD_ACK
 	seg.wnd = kcp.wnd_unused()
 	seg.una = kcp.rcv_nxt
 
@@ -638,7 +615,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 	ptr := buffer
 	for i, ack := range kcp.acklist {
 		size := len(buffer) - len(ptr)
-		if size+IKCP_OVERHEAD > int(kcp.mtu) {
+		if size+bsc.OVERHEAD > int(kcp.mtu) {
 			kcp.output(buffer, size)
 			ptr = buffer
 		}
@@ -662,19 +639,19 @@ func (kcp *KCP) flush(ackOnly bool) {
 	if kcp.rmt_wnd == 0 {
 		current := currentMs()
 		if kcp.probe_wait == 0 {
-			kcp.probe_wait = IKCP_PROBE_INIT
+			kcp.probe_wait = bsc.PROBE_INIT
 			kcp.ts_probe = current + kcp.probe_wait
 		} else {
 			if _itimediff(current, kcp.ts_probe) >= 0 {
-				if kcp.probe_wait < IKCP_PROBE_INIT {
-					kcp.probe_wait = IKCP_PROBE_INIT
+				if kcp.probe_wait < bsc.PROBE_INIT {
+					kcp.probe_wait = bsc.PROBE_INIT
 				}
 				kcp.probe_wait += kcp.probe_wait / 2
-				if kcp.probe_wait > IKCP_PROBE_LIMIT {
-					kcp.probe_wait = IKCP_PROBE_LIMIT
+				if kcp.probe_wait > bsc.PROBE_LIMIT {
+					kcp.probe_wait = bsc.PROBE_LIMIT
 				}
 				kcp.ts_probe = current + kcp.probe_wait
-				kcp.probe |= IKCP_ASK_SEND
+				kcp.probe |= bsc.ASK_SEND
 			}
 		}
 	} else {
@@ -683,10 +660,10 @@ func (kcp *KCP) flush(ackOnly bool) {
 	}
 
 	// flush window probing commands
-	if (kcp.probe & IKCP_ASK_SEND) != 0 {
-		seg.cmd = IKCP_CMD_WASK
+	if (kcp.probe & bsc.ASK_SEND) != 0 {
+		seg.cmd = bsc.CMD_WASK
 		size := len(buffer) - len(ptr)
-		if size+IKCP_OVERHEAD > int(kcp.mtu) {
+		if size+bsc.OVERHEAD > int(kcp.mtu) {
 			kcp.output(buffer, size)
 			ptr = buffer
 		}
@@ -694,10 +671,10 @@ func (kcp *KCP) flush(ackOnly bool) {
 	}
 
 	// flush window probing commands
-	if (kcp.probe & IKCP_ASK_TELL) != 0 {
-		seg.cmd = IKCP_CMD_WINS
+	if (kcp.probe & bsc.ASK_TELL) != 0 {
+		seg.cmd = bsc.CMD_WINS
 		size := len(buffer) - len(ptr)
-		if size+IKCP_OVERHEAD > int(kcp.mtu) {
+		if size+bsc.OVERHEAD > int(kcp.mtu) {
 			kcp.output(buffer, size)
 			ptr = buffer
 		}
@@ -720,7 +697,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 		}
 		newseg := kcp.snd_queue[k]
 		newseg.conv = kcp.conv
-		newseg.cmd = IKCP_CMD_PUSH
+		newseg.cmd = bsc.CMD_PUSH
 		newseg.sn = kcp.snd_nxt
 		kcp.snd_buf = append(kcp.snd_buf, newseg)
 		kcp.snd_nxt++
@@ -780,7 +757,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 			segment.una = seg.una
 
 			size := len(buffer) - len(ptr)
-			need := IKCP_OVERHEAD + len(segment.data)
+			need := bsc.OVERHEAD + len(segment.data)
 
 			if size+need > int(kcp.mtu) {
 				kcp.output(buffer, size)
@@ -826,8 +803,8 @@ func (kcp *KCP) flush(ackOnly bool) {
 	if change > 0 {
 		inflight := kcp.snd_nxt - kcp.snd_una
 		kcp.ssthresh = inflight / 2
-		if kcp.ssthresh < IKCP_THRESH_MIN {
-			kcp.ssthresh = IKCP_THRESH_MIN
+		if kcp.ssthresh < bsc.THRESH_MIN {
+			kcp.ssthresh = bsc.THRESH_MIN
 		}
 		kcp.cwnd = kcp.ssthresh + resent
 		kcp.incr = kcp.cwnd * kcp.mss
@@ -836,8 +813,8 @@ func (kcp *KCP) flush(ackOnly bool) {
 	// congestion control, https://tools.ietf.org/html/rfc5681
 	if lost > 0 {
 		kcp.ssthresh = cwnd / 2
-		if kcp.ssthresh < IKCP_THRESH_MIN {
-			kcp.ssthresh = IKCP_THRESH_MIN
+		if kcp.ssthresh < bsc.THRESH_MIN {
+			kcp.ssthresh = bsc.THRESH_MIN
 		}
 		kcp.cwnd = 1
 		kcp.incr = kcp.mss
@@ -930,7 +907,7 @@ func (kcp *KCP) Check() uint32 {
 // SetMtu changes MTU size, default is 1400
 func (kcp *KCP) SetMTU(mtu int) {
 	const minMTU = 50
-	assert.True(IKCP_OVERHEAD < minMTU)
+	assert.True(bsc.OVERHEAD < minMTU)
 	assert.True(pktpl.MaxPacketSize > minMTU)
 
 	if mtu < minMTU {
@@ -939,9 +916,9 @@ func (kcp *KCP) SetMTU(mtu int) {
 		mtu = pktpl.MaxPacketSize
 	}
 
-	kcp.buffer = make([]byte, (mtu+IKCP_OVERHEAD)*3)
+	kcp.buffer = make([]byte, (mtu+bsc.OVERHEAD)*3)
 	kcp.mtu = uint32(mtu)
-	kcp.mss = kcp.mtu - IKCP_OVERHEAD
+	kcp.mss = kcp.mtu - bsc.OVERHEAD
 }
 
 // NoDelay options
@@ -954,9 +931,9 @@ func (kcp *KCP) NoDelay(nodelay, interval, resend, nc int) int {
 	if nodelay >= 0 {
 		kcp.nodelay = uint32(nodelay)
 		if nodelay != 0 {
-			kcp.rx_minrto = IKCP_RTO_NDL
+			kcp.rx_minrto = bsc.RTO_NDL
 		} else {
-			kcp.rx_minrto = IKCP_RTO_MIN
+			kcp.rx_minrto = bsc.RTO_MIN
 		}
 	}
 	if interval >= 0 {

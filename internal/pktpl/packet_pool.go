@@ -1,4 +1,4 @@
-// pktpl is packet pool.
+// Package pktpl has a packet pool.
 package pktpl
 
 import "sync"
