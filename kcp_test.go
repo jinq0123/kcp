@@ -285,6 +285,14 @@ func TestNetwork(t *testing.T) {
 	test(2) // 快速模式，所有开关都打开，且关闭流控
 }
 
+func TestSetMTU(t *testing.T) {
+	kcp := NewKCP(1234, nil)
+	aMTU := []int{-9999, -1, 0, 1, 49, 50, 51, 1000, 1400, 1499, 1500, 1501}
+	for _, v := range aMTU {
+		kcp.SetMTU(v)
+	}
+}
+
 func BenchmarkFlush(b *testing.B) {
 	kcp := NewKCP(1, func(buf []byte, size int) {})
 	kcp.snd_buf = make([]segment, 32)

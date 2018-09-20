@@ -4,6 +4,8 @@ package kcp
 import (
 	"encoding/binary"
 	"sync/atomic"
+
+	assert "github.com/arl/assertgo"
 	"github.com/jinq0123/kcp/internal"
 )
 
@@ -926,18 +928,20 @@ func (kcp *KCP) Check() uint32 {
 }
 
 // SetMtu changes MTU size, default is 1400
-func (kcp *KCP) SetMtu(mtu int) int {
-	if mtu < 50 || mtu < IKCP_OVERHEAD {
-		return -1
+func (kcp *KCP) SetMTU(mtu int) {
+	const minMTU = 50
+	assert.True(IKCP_OVERHEAD < minMTU)
+	assert.True(internal.MaxPacketSize > minMTU)
+
+	if mtu < minMTU {
+		mtu = minMTU
+	} else if mtu > internal.MaxPacketSize {
+		mtu = internal.MaxPacketSize
 	}
-	buffer := make([]byte, (mtu+IKCP_OVERHEAD)*3)
-	if buffer == nil {
-		return -2
-	}
+
+	kcp.buffer = make([]byte, (mtu+IKCP_OVERHEAD)*3)
 	kcp.mtu = uint32(mtu)
 	kcp.mss = kcp.mtu - IKCP_OVERHEAD
-	kcp.buffer = buffer
-	return 0
 }
 
 // NoDelay options
