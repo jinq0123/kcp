@@ -1,4 +1,5 @@
-package internal
+// pktpl is packet pool.
+package pktpl
 
 import "sync"
 

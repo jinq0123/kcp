@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 
 	assert "github.com/arl/assertgo"
-	"github.com/jinq0123/kcp/internal"
+	"github.com/jinq0123/kcp/internal/pktpl"
 )
 
 const (
@@ -179,13 +179,13 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 
 // newSegment creates a KCP segment
 func (kcp *KCP) newSegment(size int) (seg segment) {
-	seg.data = internal.PacketPool.Get().([]byte)[:size]
+	seg.data = pktpl.PacketPool.Get().([]byte)[:size]
 	return
 }
 
 // delSegment recycles a KCP segment
 func (kcp *KCP) delSegment(seg segment) {
-	internal.PacketPool.Put(seg.data)
+	pktpl.PacketPool.Put(seg.data)
 }
 
 // PeekSize checks the size of next message in the recv queue
@@ -931,12 +931,12 @@ func (kcp *KCP) Check() uint32 {
 func (kcp *KCP) SetMTU(mtu int) {
 	const minMTU = 50
 	assert.True(IKCP_OVERHEAD < minMTU)
-	assert.True(internal.MaxPacketSize > minMTU)
+	assert.True(pktpl.MaxPacketSize > minMTU)
 
 	if mtu < minMTU {
 		mtu = minMTU
-	} else if mtu > internal.MaxPacketSize {
-		mtu = internal.MaxPacketSize
+	} else if mtu > pktpl.MaxPacketSize {
+		mtu = pktpl.MaxPacketSize
 	}
 
 	kcp.buffer = make([]byte, (mtu+IKCP_OVERHEAD)*3)
