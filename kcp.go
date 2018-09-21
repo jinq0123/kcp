@@ -4,6 +4,7 @@ package kcp
 import (
 	"io"
 	"sync/atomic"
+	"time"
 
 	assert "github.com/arl/assertgo"
 	"github.com/jinq0123/kcp/internal"
@@ -753,16 +754,20 @@ func (kcp *KCP) flush(ackOnly bool) {
 // ikcp_check when to call it again (without ikcp_input/_send calling).
 // 'current' - current timestamp in millisec.
 func (kcp *KCP) Update() {
-	var slap int32
+	kcp.UpdateNow(time.Now())
+}
 
-	current := currentMs()
+// UpdateNow updates state (call it repeatedly, every 10ms-100ms), or you can ask
+// ikcp_check when to call it again (without ikcp_input/_send calling).
+// 'now' - time.Now().
+// Same as Update() but use a external now time.
+func (kcp *KCP) UpdateNow(now time.Time) {
 	if kcp.updated == 0 {
 		kcp.updated = 1
 		kcp.ts_flush = current
 	}
 
-	slap = util.TimeDiff(current, kcp.ts_flush)
-
+	slap := util.TimeDiff(current, kcp.ts_flush)
 	if slap >= 10000 || slap < -10000 {
 		kcp.ts_flush = current
 		slap = 0
