@@ -15,6 +15,7 @@ import (
 )
 
 // KCP defines a single KCP connection
+// non-goroutine-safe
 type KCP struct {
 	conv, mtu, mss, state                  uint32
 	snd_una, snd_nxt, rcv_nxt              uint32
@@ -900,6 +901,7 @@ func (kcp *KCP) remove_front(q []seg.Segment, n int) []seg.Segment {
 	return q[:newn]
 }
 
+// SetOutput sets output writer.
 func (kcp *KCP) SetOutput(output io.Writer) {
 	if output == nil {
 		output = internal.NewDummyWriter()
