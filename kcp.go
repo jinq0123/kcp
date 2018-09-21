@@ -47,15 +47,19 @@ type ackItem struct {
 	ts uint32
 }
 
-// NewKCP create a new kcp control object.
-// 'conv' must equal in two endpoint from the same connection.
-func NewKCP(conv uint32, output io.Writer) *KCP {
-	if output == nil {
-		output = internal.NewDummyWriter()
-	}
+// NewKCPWithOutput creates a new kcp control object and sets output writer.
+// 'conversationID' must be equal in two endpoints from the same connection.
+func NewKCPWithOutput(conversationID uint32, output io.Writer) *KCP {
+	kcp := NewKCP(conversationID)
+	kcp.SetOutput(output)
+	return kcp
+}
 
+// NewKCP creates a new kcp control object.
+// 'conversationID' must be equal in two endpoints from the same connection.
+func NewKCP(conversationID uint32) *KCP {
 	kcp := new(KCP)
-	kcp.conv = conv
+	kcp.conv = conversationID
 	kcp.snd_wnd = bsc.WND_SND
 	kcp.rcv_wnd = bsc.WND_RCV
 	kcp.rmt_wnd = bsc.WND_RCV
@@ -68,7 +72,7 @@ func NewKCP(conv uint32, output io.Writer) *KCP {
 	kcp.ts_flush = bsc.INTERVAL
 	kcp.ssthresh = bsc.THRESH_INIT
 	kcp.dead_link = bsc.DEADLINK
-	kcp.output = output
+	kcp.output = internal.NewDummyWriter()
 	return kcp
 }
 
@@ -894,4 +898,11 @@ func (kcp *KCP) remove_front(q []seg.Segment, n int) []seg.Segment {
 		q[i] = seg.Segment{} // manual set nil for GC
 	}
 	return q[:newn]
+}
+
+func (kcp *KCP) SetOutput(output io.Writer) {
+	if output == nil {
+		output = internal.NewDummyWriter()
+	}
+	kcp.output = output
 }

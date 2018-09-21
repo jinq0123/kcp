@@ -155,8 +155,8 @@ func test(mode int) {
 
 	// 创建两个端点的 kcp对象，第一个参数 conv是会话编号，同一个会话需要相同
 	// 后一个是输出对象
-	kcp1 := NewKCP(0x11223344, NewVNetWriter(0, vnet))
-	kcp2 := NewKCP(0x11223344, NewVNetWriter(1, vnet))
+	kcp1 := NewKCPWithOutput(0x11223344, NewVNetWriter(0, vnet))
+	kcp2 := NewKCPWithOutput(0x11223344, NewVNetWriter(1, vnet))
 
 	current := uint32(iclock())
 	slap := current + 20
@@ -299,7 +299,7 @@ func TestNetwork(t *testing.T) {
 }
 
 func TestSetMTU(t *testing.T) {
-	kcp := NewKCP(1234, nil)
+	kcp := NewKCP(1234)
 	aMTU := []int{-9999, -1, 0, 1, 49, 50, 51, 1000, 1400, 1499, 1500, 1501}
 	for _, v := range aMTU {
 		kcp.SetMTU(v)
@@ -307,7 +307,7 @@ func TestSetMTU(t *testing.T) {
 }
 
 func BenchmarkFlush(b *testing.B) {
-	kcp := NewKCP(1, nil)
+	kcp := NewKCP(1)
 	kcp.snd_buf = make([]seg.Segment, 32)
 	for k := range kcp.snd_buf {
 		kcp.snd_buf[k].Xmit = 1
