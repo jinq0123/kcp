@@ -11,29 +11,8 @@ import (
 	"github.com/jinq0123/kcp/internal/endec"
 	"github.com/jinq0123/kcp/internal/pktpl"
 	"github.com/jinq0123/kcp/internal/seg"
+	"github.com/jinq0123/kcp/internal/util"
 )
-
-func _imin_(a, b uint32) uint32 {
-	if a <= b {
-		return a
-	}
-	return b
-}
-
-func _imax_(a, b uint32) uint32 {
-	if a >= b {
-		return a
-	}
-	return b
-}
-
-func _ibound_(lower, middle, upper uint32) uint32 {
-	return _imin_(_imax_(lower, middle), upper)
-}
-
-func _itimediff(later, earlier uint32) int32 {
-	return (int32)(later - earlier)
-}
 
 // KCP defines a single KCP connection
 type KCP struct {
@@ -280,8 +259,8 @@ func (kcp *KCP) update_ack(rtt int32) {
 			kcp.rx_rttvar += (delta - kcp.rx_rttvar) >> 2
 		}
 	}
-	rto = uint32(kcp.rx_srtt) + _imax_(kcp.interval, uint32(kcp.rx_rttvar)<<2)
-	kcp.rx_rto = _ibound_(kcp.rx_minrto, rto, bsc.RTO_MAX)
+	rto = uint32(kcp.rx_srtt) + util.Max(kcp.interval, uint32(kcp.rx_rttvar)<<2)
+	kcp.rx_rto = util.Bound(kcp.rx_minrto, rto, bsc.RTO_MAX)
 }
 
 func (kcp *KCP) shrink_buf() {
@@ -294,7 +273,7 @@ func (kcp *KCP) shrink_buf() {
 }
 
 func (kcp *KCP) parse_ack(sn uint32) {
-	if _itimediff(sn, kcp.snd_una) < 0 || _itimediff(sn, kcp.snd_nxt) >= 0 {
+	if util.TimeDiff(sn, kcp.snd_una) < 0 || util.TimeDiff(sn, kcp.snd_nxt) >= 0 {
 		return
 	}
 
@@ -307,20 +286,20 @@ func (kcp *KCP) parse_ack(sn uint32) {
 			kcp.snd_buf = kcp.snd_buf[:len(kcp.snd_buf)-1]
 			break
 		}
-		if _itimediff(sn, sg.Sn) < 0 {
+		if util.TimeDiff(sn, sg.Sn) < 0 {
 			break
 		}
 	}
 }
 
 func (kcp *KCP) parse_fastack(sn uint32) {
-	if _itimediff(sn, kcp.snd_una) < 0 || _itimediff(sn, kcp.snd_nxt) >= 0 {
+	if util.TimeDiff(sn, kcp.snd_una) < 0 || util.TimeDiff(sn, kcp.snd_nxt) >= 0 {
 		return
 	}
 
 	for k := range kcp.snd_buf {
 		seg := &kcp.snd_buf[k]
-		if _itimediff(sn, seg.Sn) < 0 {
+		if util.TimeDiff(sn, seg.Sn) < 0 {
 			break
 		} else if sn != seg.Sn {
 			seg.FastAck++
@@ -332,7 +311,7 @@ func (kcp *KCP) parse_una(una uint32) {
 	count := 0
 	for k := range kcp.snd_buf {
 		seg := &kcp.snd_buf[k]
-		if _itimediff(una, seg.Sn) > 0 {
+		if util.TimeDiff(una, seg.Sn) > 0 {
 			kcp.delSegment(*seg)
 			count++
 		} else {
@@ -351,8 +330,8 @@ func (kcp *KCP) ack_push(sn, ts uint32) {
 
 func (kcp *KCP) parse_data(newseg seg.Segment) {
 	sn := newseg.Sn
-	if _itimediff(sn, kcp.rcv_nxt+kcp.rcv_wnd) >= 0 ||
-		_itimediff(sn, kcp.rcv_nxt) < 0 {
+	if util.TimeDiff(sn, kcp.rcv_nxt+kcp.rcv_wnd) >= 0 ||
+		util.TimeDiff(sn, kcp.rcv_nxt) < 0 {
 		kcp.delSegment(newseg)
 		return
 	}
@@ -367,7 +346,7 @@ func (kcp *KCP) parse_data(newseg seg.Segment) {
 			atomic.AddUint64(&DefaultSnmp.RepeatSegs, 1)
 			break
 		}
-		if _itimediff(sn, seg.Sn) > 0 {
+		if util.TimeDiff(sn, seg.Sn) > 0 {
 			insert_idx = i + 1
 			break
 		}
@@ -459,14 +438,14 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				flag = 1
 				maxack = sn
 				lastackts = ts
-			} else if _itimediff(sn, maxack) > 0 {
+			} else if util.TimeDiff(sn, maxack) > 0 {
 				maxack = sn
 				lastackts = ts
 			}
 		} else if cmd == bsc.CMD_PUSH {
-			if _itimediff(sn, kcp.rcv_nxt+kcp.rcv_wnd) < 0 {
+			if util.TimeDiff(sn, kcp.rcv_nxt+kcp.rcv_wnd) < 0 {
 				kcp.ack_push(sn, ts)
-				if _itimediff(sn, kcp.rcv_nxt) >= 0 {
+				if util.TimeDiff(sn, kcp.rcv_nxt) >= 0 {
 					seg := kcp.newSegment(int(length))
 					seg.ConversationID = conv
 					seg.Cmd = cmd
@@ -501,12 +480,12 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 	if flag != 0 && regular {
 		kcp.parse_fastack(maxack)
 		current := currentMs()
-		if _itimediff(current, lastackts) >= 0 {
-			kcp.update_ack(_itimediff(current, lastackts))
+		if util.TimeDiff(current, lastackts) >= 0 {
+			kcp.update_ack(util.TimeDiff(current, lastackts))
 		}
 	}
 
-	if _itimediff(kcp.snd_una, snd_una) > 0 {
+	if util.TimeDiff(kcp.snd_una, snd_una) > 0 {
 		if kcp.cwnd < kcp.rmt_wnd {
 			mss := kcp.mss
 			if kcp.cwnd < kcp.ssthresh {
@@ -581,7 +560,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 			kcp.probe_wait = bsc.PROBE_INIT
 			kcp.ts_probe = current + kcp.probe_wait
 		} else {
-			if _itimediff(current, kcp.ts_probe) >= 0 {
+			if util.TimeDiff(current, kcp.ts_probe) >= 0 {
 				if kcp.probe_wait < bsc.PROBE_INIT {
 					kcp.probe_wait = bsc.PROBE_INIT
 				}
@@ -623,15 +602,15 @@ func (kcp *KCP) flush(ackOnly bool) {
 	kcp.probe = 0
 
 	// calculate window size
-	cwnd := _imin_(kcp.snd_wnd, kcp.rmt_wnd)
+	cwnd := util.Min(kcp.snd_wnd, kcp.rmt_wnd)
 	if kcp.nocwnd == 0 {
-		cwnd = _imin_(kcp.cwnd, cwnd)
+		cwnd = util.Min(kcp.cwnd, cwnd)
 	}
 
 	// sliding window, controlled by snd_nxt && sna_una+cwnd
 	newSegsCount := 0
 	for k := range kcp.snd_queue {
-		if _itimediff(kcp.snd_nxt, kcp.snd_una+cwnd) >= 0 {
+		if util.TimeDiff(kcp.snd_nxt, kcp.snd_una+cwnd) >= 0 {
 			break
 		}
 		newseg := kcp.snd_queue[k]
@@ -663,7 +642,7 @@ func (kcp *KCP) flush(ackOnly bool) {
 			needsend = true
 			segment.RTO = kcp.rx_rto
 			segment.ResendTs = current + segment.RTO
-		} else if _itimediff(current, segment.ResendTs) >= 0 { // RTO
+		} else if util.TimeDiff(current, segment.ResendTs) >= 0 { // RTO
 			needsend = true
 			if kcp.nodelay == 0 {
 				segment.RTO += kcp.rx_rto
@@ -777,7 +756,7 @@ func (kcp *KCP) Update() {
 		kcp.ts_flush = current
 	}
 
-	slap = _itimediff(current, kcp.ts_flush)
+	slap = util.TimeDiff(current, kcp.ts_flush)
 
 	if slap >= 10000 || slap < -10000 {
 		kcp.ts_flush = current
@@ -786,7 +765,7 @@ func (kcp *KCP) Update() {
 
 	if slap >= 0 {
 		kcp.ts_flush += kcp.interval
-		if _itimediff(current, kcp.ts_flush) >= 0 {
+		if util.TimeDiff(current, kcp.ts_flush) >= 0 {
 			kcp.ts_flush = current + kcp.interval
 		}
 		kcp.flush(false)
@@ -810,20 +789,20 @@ func (kcp *KCP) Check() uint32 {
 		return current
 	}
 
-	if _itimediff(current, ts_flush) >= 10000 ||
-		_itimediff(current, ts_flush) < -10000 {
+	if util.TimeDiff(current, ts_flush) >= 10000 ||
+		util.TimeDiff(current, ts_flush) < -10000 {
 		ts_flush = current
 	}
 
-	if _itimediff(current, ts_flush) >= 0 {
+	if util.TimeDiff(current, ts_flush) >= 0 {
 		return current
 	}
 
-	tm_flush = _itimediff(ts_flush, current)
+	tm_flush = util.TimeDiff(ts_flush, current)
 
 	for k := range kcp.snd_buf {
 		seg := &kcp.snd_buf[k]
-		diff := _itimediff(seg.ResendTs, current)
+		diff := util.TimeDiff(seg.ResendTs, current)
 		if diff <= 0 {
 			return current
 		}
