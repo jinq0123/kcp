@@ -2,52 +2,16 @@
 package kcp
 
 import (
-	"encoding/binary"
 	"io"
 	"sync/atomic"
 
 	assert "github.com/arl/assertgo"
 	"github.com/jinq0123/kcp/internal"
 	"github.com/jinq0123/kcp/internal/bsc"
+	"github.com/jinq0123/kcp/internal/endec"
 	"github.com/jinq0123/kcp/internal/pktpl"
 	"github.com/jinq0123/kcp/internal/seg"
 )
-
-/* encode 8 bits unsigned int */
-func ikcp_encode8u(p []byte, c byte) []byte {
-	p[0] = c
-	return p[1:]
-}
-
-/* decode 8 bits unsigned int */
-func ikcp_decode8u(p []byte, c *byte) []byte {
-	*c = p[0]
-	return p[1:]
-}
-
-/* encode 16 bits unsigned int (lsb) */
-func ikcp_encode16u(p []byte, w uint16) []byte {
-	binary.LittleEndian.PutUint16(p, w)
-	return p[2:]
-}
-
-/* decode 16 bits unsigned int (lsb) */
-func ikcp_decode16u(p []byte, w *uint16) []byte {
-	*w = binary.LittleEndian.Uint16(p)
-	return p[2:]
-}
-
-/* encode 32 bits unsigned int (lsb) */
-func ikcp_encode32u(p []byte, l uint32) []byte {
-	binary.LittleEndian.PutUint32(p, l)
-	return p[4:]
-}
-
-/* decode 32 bits unsigned int (lsb) */
-func ikcp_decode32u(p []byte, l *uint32) []byte {
-	*l = binary.LittleEndian.Uint32(p)
-	return p[4:]
-}
 
 func _imin_(a, b uint32) uint32 {
 	if a <= b {
@@ -460,18 +424,18 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 			break
 		}
 
-		data = ikcp_decode32u(data, &conv)
+		data = endec.Decode32u(data, &conv)
 		if conv != kcp.conv {
 			return -1
 		}
 
-		data = ikcp_decode8u(data, &cmd)
-		data = ikcp_decode8u(data, &frg)
-		data = ikcp_decode16u(data, &wnd)
-		data = ikcp_decode32u(data, &ts)
-		data = ikcp_decode32u(data, &sn)
-		data = ikcp_decode32u(data, &una)
-		data = ikcp_decode32u(data, &length)
+		data = endec.Decode8u(data, &cmd)
+		data = endec.Decode8u(data, &frg)
+		data = endec.Decode16u(data, &wnd)
+		data = endec.Decode32u(data, &ts)
+		data = endec.Decode32u(data, &sn)
+		data = endec.Decode32u(data, &una)
+		data = endec.Decode32u(data, &length)
 		if len(data) < int(length) {
 			return -2
 		}
